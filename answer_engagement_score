@@ -1,0 +1,80 @@
+CREATE TEMPORARY TABLE answerengagement
+select m.answerid, m.answerdate, m.dayssinceanswered, m.videoduration, m.question,m. transcription, m.creatorid, m.authorname, m.likes, m.comments, m.saves,m.distinctshares, m.totalexplicitsignal, m.completedViews, m.answerengagementscore, rank()over(partition by creatorid order by answerengagementscore desc) as answerengagementrank
+from
+(select 
+	a.id as answerid,
+	DATE(a.createdAt) as answerDate,
+	DATEDIFF(CURDATE(), DATE(a.createdAt)) dayssinceanswered,
+    a.questionId,
+    a.videoDuration,
+    q.description as question,
+    SUBSTRING(a.transcription, 41) as transcription,
+    a.creatorId,
+    CONCAT(vec.firstName, CONCAT( " ", vec.lastName)) as authorName,
+    vec.primary_channel_name as channel,
+    l.likes,
+    c.comments,
+    b.saves,
+    s.distinctshares,
+    views.completedViews,
+     views.completedViews / DATEDIFF(CURDATE(), DATE(a.createdAt)) as completedViewsPerDay,
+    (coalesce(l.likes,0) + coalesce(c.comments,0) + coalesce(b.saves,0) + coalesce(s.distinctshares,0)) as totalexplicitsignal,
+    (coalesce(l.likes,0) + coalesce(c.comments,0) + coalesce(b.saves,0) + coalesce(s.distinctshares,0))/ DATEDIFF(CURDATE(), DATE(a.createdAt)) as explicitsignalperday,
+     views.completedViews  + (coalesce(l.likes,0) + coalesce(c.comments,0) + coalesce(b.saves,0) + coalesce(s.distinctshares,0))*3 as answerengagementscore
+from  answer a 
+left join question q on a.questionid = q.id
+left join any_questions_data_science.valid_experts_channels vec on a. creatorId = vec.userId
+left join 
+	(select 
+		answerId,
+		MIN(createdAt) as minDate,
+		MAX(createdAt) as maxDate,
+		count(1) as likes
+	from `like` 
+	where deletedAt is null
+	group by 1 )l on a.id = l.answerId
+left join 
+(select 
+	answerId,
+	MIN(createdAt) as minDate,
+	MAX(createdAt) as maxDate,
+	count(1) as comments
+from `comment` 
+ where deletedAt is null
+ group by 1) c on a.id = c.answerId
+left join 
+(select 
+	answerId,
+	MIN(createdAt) as minDate,
+	MAX(createdAt) as maxDate,
+	count(1) as saves
+from `bookmark` 
+ where deletedAt is null
+ group by 1
+ order by 4 desc) b on a.id = b.answerId
+left join 
+(select 
+	answerId,
+	MIN(createdAt) as minDate,
+	MAX(createdAt) as maxDate,
+	count(distinct userid) distinctshares
+from `share_history` 
+ where deletedAt is null
+ group by 1
+ order by 4 desc)s on a.id = s.answerId
+ left join (select answerId, 
+       count(distinct viewDate) as watchedDays,
+       sum(case 
+		when viewTimePenalised / videoDuration > 0.8 then 1
+        else 0
+	   end) as completedViews,
+       count(1) as views
+ from ds_answer_view dav
+where userId not in (select userId 
+			  from any_questions_data_science.valid_experts_channels where category_name = 'None/Internal')
+group by dav.answerId) as views
+on a.id=views.answerId
+where a.deletedAt is NULL
+and q.deletedAt is NULL
+order by answerengagementscore desc)m
+order by authorname, answerdate
