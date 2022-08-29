@@ -1,0 +1,54 @@
+
+DROP TABLE IF EXISTS user_free_trial;
+CREATE TEMPORARY TABLE user_free_trial
+with user_free_trial as(
+select 
+	avr.userid, 
+	u.joindate, 
+	sum(time) as totalusetime,
+	SUM(CASE WHEN date(avr.createdAt) = joindate then time end) as firstdayusetime, 
+	case when s.userid is not null then 'converted' end as convertstatus, 
+	s.status, 
+	s.purchasedate, 
+	s.expiredate, 
+	s.name, 
+	coalesce(s.purchasetype,'unconverted') as purchasetype, 
+	b.totalchannel, b.totalexpert, 	
+	count(distinct (case when date(avr.createdat) <= coalesce(s.purchasedate,curdate()) then avr.answerid end)) as totalanswerbeforepurchase,  b.firstdaychannel, b.firstdayexpert, b.firstdayanswer, b.lastday, daysonapp,
+	case when vec.primary_channel_name is not null then 'expert' else 'user' end as usertype
+from answer_view_record avr
+inner join
+	(select id as userid, date(min(createdat)) as joindate from user 
+	where date(createdAt) BETWEEN '2022-02-01' AND '2022-08-05'
+	and  deletedAt is null
+	group by 1)u   
+on avr.userid = u.userid
+left join
+	(select pt.userid, date(from_unixtime(purchaseAt/1000)) as purchasedate, date(from_unixtime(expiretime/1000)) as expiredate, 
+	p.name, case when pt.originalTransactionId LIKE '%officialuser%' then 'aqgiven' else 'selfpurchase' end as purchasetype, 
+  case when pt.expireTime > unix_timestamp() * 1000 then 'active' else 'expired' end as status 
+	from purchase_transaction pt
+	left join product p on pt.productSku = p.sku 
+	where pt.deletedAt is null)s 
+on avr.userId = s.userid
+left join 
+	(select v.userid, count(distinct v.primary_channel_name) as totalchannel, count(distinct creatorId) as totalexpert, count(distinct (case when watchdate = joindate then primary_channel_name end)) as firstdaychannel, count(distinct (case when watchdate = joindate then creatorId end)) as firstdayexpert, count(distinct (case when watchdate = joindate then answerid end)) as firstdayanswer, max(watchdate) as lastday, count(distinct watchdate) as daysonapp, SUM(case when watchdate = joindate then time end)over (partition by userid,creatorid) as firstdaytimeperexpert
+	from
+	(select avr.userid, date(avr.createdAt) as watchdate, avr.time,avr.answerid, creatorId, vec.primary_channel_name, joindate
+	from answer_view_record avr 
+	left join answer a on avr.answerId = a.id 
+	left join any_questions_data_science.valid_experts_channels vec on a.creatorId = vec.userid
+	left join 
+	(select id, date(min(createdat)) as joindate from user u group by 1)u 
+	on avr.userid = u.id)v
+	group by 1)b 
+on avr.userId = b.userid
+left join any_questions_data_science.valid_experts_channels vec
+on avr.userid = vec.userid
+where avr.deletedAt is null
+group by 1)
+select *, case when totalusetime > 3500 then 'finished' else 'unfinished' end as freetrialstatus 
+from user_free_trial 
+
+
+select * from user_free_trial
