@@ -1,0 +1,53 @@
+-- Following action time-series
+
+select tf.topicid, t.`name`, date(tf.createdat) as followingdate, count(tf.userid) followingcount from topic_follow tf
+left join profile p 
+on tf.userid = p.userid 
+left join any_questions_data_science.user_type_key utk
+on utk.userid = tf.userid
+left join topic t 
+on tf.topicid = t.id 
+where tf.deletedAt is null
+and utk.testing_account = 0
+and utk.question_account = 0
+and utk.channel_managers = 0  
+and utk.aq_team = 0
+group by 1,2,3
+order by 1,3
+
+-- following behavior allup
+select tf.topicid, t.`name` as channelname, count(tf.userid) followingcount 
+from topic_follow tf
+left join profile p 
+on tf.userid = p.userid 
+left join any_questions_data_science.user_type_key utk
+on utk.userid = tf.userid
+left join topic t 
+on tf.topicid = t.id 
+where 
+-- tf.deletedAt is null
+ utk.testing_account = 0
+and utk.question_account = 0
+and utk.aq_team = 0
+and date(p.createdAt) >= CURDATE() -28
+and date(p.createdAt) = date(tf.createdAt)
+-- and utk.valid_expert = 0
+-- and utk.channel_managers = 0  
+-- and aq_given_membership = 0 
+group by 1,2
+order by 1
+
+
+-- following histogram
+select floor(countchannel/1)*1 as bucket,
+count(*) AS count
+from
+(select tf.userid, count(tf.topicid) as countchannel
+from topic_follow tf
+left join profile p 
+on tf.userid = p.userid 
+where tf.deletedAt is null
+and date(p.createdAt)  >= CURDATE() -28
+group by 1)a
+group by bucket
+order by bucket
