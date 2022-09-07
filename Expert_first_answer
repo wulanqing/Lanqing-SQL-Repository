@@ -1,0 +1,18 @@
+with ad as 
+	(select a.id,  a.creatorId, date(a.createdAt) as answerdate, 
+	rank() over(partition by a.creatorId order by a.createdAt) as answerrank
+	from answer a 
+	where a.deletedat is null
+	and a.parentid is null)
+,fa as
+	(select ad.creatorId, date(p.expertStatusAt), COALESCE(date(p.expertStatusAt), date(p.createdAt)) as joindate, ad.answerdate as 1answerdate, concat(p.firstname, concat(' ', p.lastname)) as fullname, GROUP_CONCAT(t.name) as channel
+	from ad
+	left join profile p 
+	on ad.creatorid = p.userid
+	left join topic_member tm 
+	on ad.creatorid = tm.userid 
+	left join topic t 
+	on tm.topicid = t.id
+	where answerrank = 1
+	group by 1,2,3,4)
+select * from fa where 1answerdate between '2022-08-01' and '2022-08-31' group by 1 order by 2
