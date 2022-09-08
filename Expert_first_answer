@@ -5,7 +5,7 @@ with ad as
 	where a.deletedat is null
 	and a.parentid is null)
 ,fa as
-	(select ad.creatorId, date(p.expertStatusAt), COALESCE(date(p.expertStatusAt), date(p.createdAt)) as joindate, ad.answerdate as 1answerdate, concat(p.firstname, concat(' ', p.lastname)) as fullname, GROUP_CONCAT(t.name) as channel
+	(select ad.creatorId,  COALESCE(date(p.expertStatusAt), date(p.createdAt)) as joindate, ad.answerdate as 1answerdate, concat(p.firstname, concat(' ', p.lastname)) as fullname, p.isVerifiedExpert, GROUP_CONCAT(t.name) as channel
 	from ad
 	left join profile p 
 	on ad.creatorid = p.userid
@@ -14,5 +14,5 @@ with ad as
 	left join topic t 
 	on tm.topicid = t.id
 	where answerrank = 1
-	group by 1,2,3,4)
+	group by 1,2,3,4,5)
 select * from fa where 1answerdate between '2022-08-01' and '2022-08-31' group by 1 order by 2
