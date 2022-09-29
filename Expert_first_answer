@@ -14,5 +14,6 @@ with ad as
 	left join topic t 
 	on tm.topicid = t.id
 	where answerrank = 1
+	and t.name is not null
 	group by 1,2,3,4,5)
-select * from fa where 1answerdate between '2022-08-01' and '2022-08-31' group by 1 order by 2
+select * from fa where 1answerdate between DATE_FORMAT(NOW() ,'%Y-%m-01') and date(now()) group by 1 order by 2
