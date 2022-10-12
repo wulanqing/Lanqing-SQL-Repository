@@ -1,0 +1,18 @@
+with ve as 
+(select 
+	p.userId,
+	COALESCE(date(p.expertStatusAt), date(p.createdAt)) as joindate, 
+	concat(p.firstname, concat(' ', p.lastname)) as fullname, 
+	p.isVerifiedExpert, 
+	GROUP_CONCAT(t.name) as channel
+	from profile p 
+	left join topic_member tm 
+	on p.userId = tm.userid 
+	left join topic t 
+	on tm.topicid = t.id
+	where p.isVerifiedExpert = 1
+	and t.name is not null
+	and p.deletedAt is null
+	group by 1,2,3) 
+select * from ve 
+where channel NOT IN ('AQ Team,Channel Managers', 'AQ Team', 'Channel Managers')
