@@ -1,0 +1,90 @@
+select 
+	m.*,
+	(case when lastanswerdate is null then 'never activated'
+		 when lastanswerdate is not null and 5answerdate is null then '1 answer'
+		 when 5answerdate is not null and 25answerdate is null then '5 answers'
+		 when 25answerdate is not null and 100answerdate is null then '25 answers'
+		 else 'sucessfully activated' end) as 'activationstatus',
+	(case when lastanswerdate is null then 'never activated'
+		 when lastanswerdate <= DATE_FORMAT(NOW() - INTERVAL 3 MONTH, '%Y-%m-%d') then 'dormant'
+		 when lastanswerdate BETWEEN DATE_FORMAT(NOW() - INTERVAL 3 MONTH, '%Y-%m-%d') and DATE_FORMAT(NOW() - INTERVAL 1 MONTH, '%Y-%m-%d') then 'in danger'
+		 else 'active' end) as 'retentionstatus',
+	round(answerdays/daysjoined,2) as stickiness,
+	round(lastmonthanswerdays/DAY(LAST_DAY(NOW() - INTERVAL 1 MONTH)),2) as lastmonthstickiness,
+	datediff(n.1answerdate, m.expertstartdate) as daysto1answer,
+	datediff(n.5answerdate, m.expertstartdate) as daysto5answer,
+	datediff(n.25answerdate, m.expertstartdate) as daysto25answer,
+	datediff(n.100answerdate, m.expertstartdate) as daysto100answer	 
+from -- m
+	(select distinct
+		expertname,
+		userid,
+		joindate as expertstartdate,
+		daysjoined,
+		channel,
+		count(id) as totalanswer,
+		count(distinct answerdate) as answerdays,
+		count(distinct case when answerdate BETWEEN DATE_FORMAT(NOW() - INTERVAL 1 MONTH, '%Y-%m-01 00:00:00')AND DATE_FORMAT(LAST_DAY(NOW() - INTERVAL 1 MONTH), '%Y-%m-%d 23:59:59') then answerdate end) as lastmonthanswerdays,
+		round(avg(videoDuration),0) as avgvideoduration,
+		max(answerdate) as lastanswerdate
+	from
+		(select 
+			a.id, 
+			date(a.createdAt) as answerdate, 
+			month(a.createdAt) as answermonth, 
+			a. videoDuration, 
+			e.userid, 
+			e.channel, 
+			e.fullname as expertname,
+			e.joindate, 
+			datediff(curdate(), e.joindate) as daysjoined
+		from -- e 
+		(select *
+		from 
+			(select 
+				p.userId,
+				COALESCE(date(p.expertStatusAt), date(p.createdAt)) as joindate, 
+				concat(p.firstname, concat(' ', p.lastname)) as fullname, 
+				p.isVerifiedExpert, 
+				GROUP_CONCAT(t.name) as channel
+				from profile p 
+				left join topic_member tm 
+				on p.userId = tm.userid 
+				left join topic t 
+				on tm.topicid = t.id
+				where p.isVerifiedExpert = 1
+				and t.name is not null
+				and p.deletedAt is null
+				group by 1,2,3) ve
+			where channel NOT IN ('AQ Team,Channel Managers', 'AQ Team', 'Channel Managers')) e -- valid expert list with channel
+		left join answer a 
+		on a.creatorid = e.userId
+		where a.deletedat is null)u -- all answers with expert info
+	group by 1,2,3,4,5)m -- all experts with startdate, answerdays etc.
+	left join 
+		(with ad as 
+		(select a.id,  a.creatorId, date(a.createdAt) as answerdate, 
+		rank() over(partition by a.creatorId order by a.createdAt) as answerrank
+		from answer a 
+		where a.deletedat is null)
+			select x.creatorid, x.1answerdate, y.5answerdate, z.25answerdate, o.100answerdate
+			from
+			(select distinct creatorId, answerdate as 1answerdate
+			from ad
+			where answerrank = 1)x
+			left join 
+			(select creatorId, answerdate as 5answerdate
+			from ad
+			where answerrank = 5)y 
+			on x.creatorid = y.creatorid
+			left join 
+			(select creatorId, answerdate as 25answerdate
+			from ad
+			where answerrank = 25)z 
+			on x.creatorid = z.creatorid
+			left join 
+			(select creatorId, answerdate as 100answerdate
+			from ad
+			where answerrank = 100)o 
+			on x.creatorid = o.creatorid)n 
+on m. userid = n.creatorid
