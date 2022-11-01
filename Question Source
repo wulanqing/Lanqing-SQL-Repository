@@ -1,0 +1,45 @@
+select questioncreatedate, type, source, count(questionid)
+FROM
+(
+	select 
+		date(q.createdAt) as questioncreatedate, q.id as questionid, q.description, q.creatorId,
+		concat(p.firstName, ' ', p.lastName) as askername, u.roles,
+		case when u.roles = 'COMMON' then 'External' else 'Internal' end as source,
+		case when qd.asker is not null then 'direct'
+			 when qd.asker is null and qc.asker is not null then 'channel' 
+			 else null end as 'type',
+		qd.askto, qc.topicId, qc.channelname
+	from question q
+	left join profile p on q.creatorid = p.userid
+	left join user u on q.creatorid = u.id
+	left join 
+		(
+			select 
+				qd.questionid, qd.asker, max(qd.askto) as askto
+			from 	
+				question_detail qd
+			where 
+				qd.deletedAt is null
+				and date(qd.createdAt) BETWEEN current_date - interval 14 day AND current_date 
+			group by 1
+		) qd on q.id = qd.questionId
+	left join  
+		(
+			select 
+				qc.questionId, qc.asker, max(topicId) as topicid, MAX(t.name) as channelname, t.status
+			from 
+				question_channel qc
+				left join topic t on qc.topIcid = t.id
+			where 
+				qc.deletedAt is null
+				and date(qc.createdAt) BETWEEN current_date - interval 14 day AND current_date   
+			group by 1
+		) qc on q.id = qc.questionId
+	where date(q.createdAt) BETWEEN current_date - interval 14 day AND current_date 
+	and q.deletedAt is null
+	and q.isIntroQuestion = 0
+	and q.reviewStatus = 'approved'
+	and q.isPrivate = 0
+	and qc.status = 'ACTIVE'
+)a
+group by 1,2
